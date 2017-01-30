@@ -53,14 +53,18 @@ namespace keymolen {
 	}
 
 	void Hough::Transform(std::vector<Eigen::Vector2f> points, box b) {
-		_img_w = _bornes.maxx - _bornes.minx;
-		_img_h = _bornes.maxy - _bornes.miny;
+
 		_bornes = b;
 
+		_img_w = _bornes.getW();
+		_img_h = _bornes.getH();
+
 		//Create the accu
-		double hough_h = ((sqrt(2.0) * (double)std::max(_img_w, _img_h)) / 2.0);
+		double hough_h = sqrt(2.0) * std::max(_img_w, _img_h) / 2.0;
 		_accu_h = hough_h * 2.0; // -r -> +r
 		_accu_w = 180;
+
+		if(_accu_h == 0) return;
 
 		if(_accu)
 			free(_accu);
@@ -72,8 +76,8 @@ namespace keymolen {
         for (auto pt : points) {
             auto proj = _bornes.project(pt);
             for(int t=0;t<180;t++) {
-                double r = ( ((double)proj(0) - center_x) * cos((double)t * DEG2RAD)) + (((double)proj(1) - center_y) * sin((double)t * DEG2RAD));
-                _accu[ (int)((round(r + hough_h) * 180.0)) + t]++;
+                double r = (proj(0) - center_x) * std::cos(t * DEG2RAD) + (proj(1) - center_y) * std::sin(t * DEG2RAD);
+                _accu[ (int)(round(r + hough_h) * 180.0) + t]++;
             }
         }
 	}
@@ -86,7 +90,7 @@ namespace keymolen {
 
 		for(int r=0;r<_accu_h;r++) {
 			for(int t=0;t<_accu_w;t++) {
-				if((int)_accu[(r*_accu_w) + t] >= threshold) {
+				if(_accu[(r*_accu_w) + t] >= threshold) {
 					//Is this point a local maxima (9x9)
 					int max = _accu[(r*_accu_w) + t];
 					for(int ly=-4;ly<=4;ly++) {
@@ -99,24 +103,24 @@ namespace keymolen {
 							}
 						}
 					}
-					if(max > (int)_accu[(r*_accu_w) + t])
+					if(max > _accu[(r*_accu_w) + t])
 						continue;
 
-					int x1, y1, x2, y2;
+					float x1, y1, x2, y2;
 					x1 = y1 = x2 = y2 = 0;
 
 					if(t >= 45 && t <= 135) {
 						//y = (r - x cos(t)) / sin(t)
 						x1 = 0;
-						y1 = ((double)(r-(_accu_h/2)) - ((x1 - (_img_w/2) ) * cos(t * DEG2RAD))) / sin(t * DEG2RAD) + (_img_h / 2);
+						y1 = ((r-(_accu_h/2)) - ((x1 - (_img_w/2) ) * std::cos(t * DEG2RAD))) / std::sin(t * DEG2RAD) + (_img_h / 2);
 						x2 = _img_w - 0;
-						y2 = ((double)(r-(_accu_h/2)) - ((x2 - (_img_w/2) ) * cos(t * DEG2RAD))) / sin(t * DEG2RAD) + (_img_h / 2);
+						y2 = ((r-(_accu_h/2)) - ((x2 - (_img_w/2) ) * std::cos(t * DEG2RAD))) / std::sin(t * DEG2RAD) + (_img_h / 2);
 					} else {
 						//x = (r - y sin(t)) / cos(t);
 						y1 = 0;
-						x1 = ((double)(r-(_accu_h/2)) - ((y1 - (_img_h/2) ) * sin(t * DEG2RAD))) / cos(t * DEG2RAD) + (_img_w / 2);
+						x1 = ((r-(_accu_h/2)) - ((y1 - (_img_h/2) ) * std::sin(t * DEG2RAD))) / std::cos(t * DEG2RAD) + (_img_w / 2);
 						y2 = _img_h - 0;
-						x2 = ((double)(r-(_accu_h/2)) - ((y2 - (_img_h/2) ) * sin(t * DEG2RAD))) / cos(t * DEG2RAD) + (_img_w / 2);
+						x2 = ((r-(_accu_h/2)) - ((y2 - (_img_h/2) ) * std::sin(t * DEG2RAD))) / std::cos(t * DEG2RAD) + (_img_w / 2);
 					}
                     Eigen::Vector2f p1 = _bornes.unproject({x1, y1});
                     Eigen::Vector2f p2 = _bornes.unproject({x2, y2});

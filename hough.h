@@ -38,6 +38,8 @@
 #include <vector>
 #include <Eigen/Core>
 
+#define HOUGH_UNIT_ 100
+
 namespace keymolen {
 
     struct box {
@@ -45,12 +47,20 @@ namespace keymolen {
         float maxx;
         float miny;
         float maxy;
+
 	    inline Eigen::Vector2f project(Eigen::Vector2f pt) {
 	        Eigen::Vector2f p = {minx, miny};
-	        return pt - p; }
+	        return (pt - p)*HOUGH_UNIT_;
+        }
+
 	    inline Eigen::Vector2f unproject(Eigen::Vector2f pt) {
 	        Eigen::Vector2f p = {minx, miny};
-	        return pt + p; }
+	        return pt/HOUGH_UNIT_ + p;
+        }
+
+        inline float getW() { return (maxx - minx)* HOUGH_UNIT_; }
+        inline float getH() { return (maxy - miny)* HOUGH_UNIT_; }
+
     } typedef box;
 
 	class Hough {
