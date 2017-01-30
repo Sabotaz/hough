@@ -36,16 +36,30 @@
 #define HOUGH_H_
 
 #include <vector>
+#include <Eigen/Core>
 
 namespace keymolen {
+
+    struct box {
+        float minx;
+        float maxx;
+        float miny;
+        float maxy;
+	    inline Eigen::Vector2f project(Eigen::Vector2f pt) {
+	        Eigen::Vector2f p = {minx, miny};
+	        return pt - p; }
+	    inline Eigen::Vector2f unproject(Eigen::Vector2f pt) {
+	        Eigen::Vector2f p = {minx, miny};
+	        return pt + p; }
+    } typedef box;
 
 	class Hough {
 	public:
 		Hough();
 		virtual ~Hough();
 	public:
-		int Transform(unsigned char* img_data, int w, int h);
-		std::vector< std::pair< std::pair<int, int>, std::pair<int, int> > > GetLines(int threshold);
+		void Transform(std::vector<Eigen::Vector2f> points, box bornes);
+		std::vector< std::pair< Eigen::Vector2f, Eigen::Vector2f > > GetLines(int threshold);
 		const unsigned int* GetAccu(int *w, int *h);
 	private:
 		unsigned int* _accu;
@@ -53,6 +67,7 @@ namespace keymolen {
 		int _accu_h;
 		int _img_w;
 		int _img_h;
+		box _bornes;
 	};
 
 }
