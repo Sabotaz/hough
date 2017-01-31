@@ -38,7 +38,6 @@
 #include <string.h>
 #include <stdlib.h>
 
-
 #define DEG2RAD 0.017453293f
 
 namespace keymolen {
@@ -48,8 +47,12 @@ namespace keymolen {
 	}
 
 	Hough::~Hough() {
-		if(_accu)
-			free(_accu);
+		if(_accu) {
+             for(int r=0;r<_accu_h;r++) {
+                 delete[] _accu[r];
+            }
+             delete[] _accu;
+         }
 	}
 
 	void Hough::Transform(std::vector<Eigen::Vector2f> points, box b) {
@@ -61,14 +64,26 @@ namespace keymolen {
 
 		//Create the accu
 		double hough_h = sqrt(2.0) * std::max(_img_w, _img_h) / 2.0;
-		_accu_h = hough_h * 2.0; // -r -> +r
+		_accu_h = hough_h * 2.0 + 1; // -r -> +r
 		_accu_w = 180;
 
 		if(_accu_h == 0) return;
 
-		if(_accu)
-			free(_accu);
-		_accu = (unsigned int*)calloc(_accu_h * _accu_w, sizeof(unsigned int));
+		if(_accu) {
+            for(int r=0;r<_accu_h;r++) {
+                delete[] _accu[r];
+			}
+            delete[] _accu;
+        }
+		//_accu = (std::vector<Eigen::Vector2f>*)std::malloc(_accu_h * _accu_w * sizeof(std::vector<Eigen::Vector2f>));
+		_accu = new std::vector<Eigen::Vector2f>*[_accu_h];
+		for(int r=0;r<_accu_h;r++) {
+		    _accu[r] = new std::vector<Eigen::Vector2f>[_accu_w];
+			for(int t=0;t<_accu_w;t++) {
+                std::vector<Eigen::Vector2f> vect;
+                _accu[r][t] = vect;
+            }
+        }
 
 		double center_x = _img_w/2;
 		double center_y = _img_h/2;
@@ -77,33 +92,34 @@ namespace keymolen {
             auto proj = _bornes.project(pt);
             for(int t=0;t<180;t++) {
                 double r = (proj(0) - center_x) * std::cos(t * DEG2RAD) + (proj(1) - center_y) * std::sin(t * DEG2RAD);
-                _accu[ (int)(round(r + hough_h) * 180.0) + t]++;
+                _accu[(int)(round(r + hough_h))][t].push_back(pt);
             }
         }
 	}
 
-	std::vector< std::pair< Eigen::Vector2f, Eigen::Vector2f > > Hough::GetLines(int threshold) {
-		std::vector< std::pair< Eigen::Vector2f, Eigen::Vector2f > > lines;
+	std::vector< std::pair< std::pair< Eigen::Vector2f, Eigen::Vector2f >, std::vector<Eigen::Vector2f> > > Hough::GetLines(int threshold) {
+	    std::vector< std::pair< std::pair< Eigen::Vector2f, Eigen::Vector2f >, std::vector<Eigen::Vector2f> > > lines;
 
 		if(_accu == 0)
 			return lines;
 
 		for(int r=0;r<_accu_h;r++) {
 			for(int t=0;t<_accu_w;t++) {
-				if(_accu[(r*_accu_w) + t] >= threshold) {
+				if(_accu[r][t].size() >= threshold) {
 					//Is this point a local maxima (9x9)
-					int max = _accu[(r*_accu_w) + t];
-					for(int ly=-4;ly<=4;ly++) {
-						for(int lx=-4;lx<=4;lx++) {
+					int loc = 15 / 2;
+					int max = _accu[r][t].size();
+					for(int ly=-loc;ly<=loc;ly++) {
+						for(int lx=-loc;lx<=loc;lx++) {
 							if( (ly+r>=0 && ly+r<_accu_h) && (lx+t>=0 && lx+t<_accu_w)  ) {
-								if( (int)_accu[( (r+ly)*_accu_w) + (t+lx)] > max ) {
-									max = _accu[( (r+ly)*_accu_w) + (t+lx)];
+								if( _accu[r+ly][t+lx].size() > max ) {
+									max = _accu[r+ly][t+lx].size();
 									ly = lx = 5;
 								}
 							}
 						}
 					}
-					if(max > _accu[(r*_accu_w) + t])
+					if(max > _accu[r][t].size())
 						continue;
 
 					float x1, y1, x2, y2;
@@ -124,19 +140,18 @@ namespace keymolen {
 					}
                     Eigen::Vector2f p1 = _bornes.unproject({x1, y1});
                     Eigen::Vector2f p2 = _bornes.unproject({x2, y2});
-
-					lines.push_back(std::make_pair(p1, p2));
+                    std::pair< Eigen::Vector2f, Eigen::Vector2f > line = std::make_pair(p1, p2);
+					lines.push_back(std::make_pair(line, _accu[r][t]));
 
 				}
 			}
 		}
-		
-		std::cout << "lines: " << lines.size() << " " << threshold << std::endl;
+
+		LOGI("lines: %d, threshold: %d", lines.size(), threshold);
 		return lines;
 	}
 
-	const unsigned int* Hough::GetAccu(int *w, int *h)
-	{
+	std::vector<Eigen::Vector2f>** Hough::GetAccu(int *w, int *h) {
 		*w = _accu_w;
 		*h = _accu_h;
 

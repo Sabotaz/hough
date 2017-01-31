@@ -38,6 +38,13 @@
 #include <vector>
 #include <Eigen/Core>
 
+#include <android/log.h>
+
+#define LOG_TAG "keymolen"
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
+#define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
+#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
+
 #define HOUGH_UNIT_ 100
 
 namespace keymolen {
@@ -69,10 +76,10 @@ namespace keymolen {
 		virtual ~Hough();
 	public:
 		void Transform(std::vector<Eigen::Vector2f> points, box bornes);
-		std::vector< std::pair< Eigen::Vector2f, Eigen::Vector2f > > GetLines(int threshold);
-		const unsigned int* GetAccu(int *w, int *h);
+		std::vector< std::pair< std::pair< Eigen::Vector2f, Eigen::Vector2f >, std::vector<Eigen::Vector2f> > > GetLines(int threshold);
+		std::vector<Eigen::Vector2f>** GetAccu(int *w, int *h);
 	private:
-		unsigned int* _accu;
+		std::vector<Eigen::Vector2f>** _accu;
 		int _accu_w;
 		int _accu_h;
 		int _img_w;
