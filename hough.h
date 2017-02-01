@@ -37,6 +37,7 @@
 
 #include <vector>
 #include <Eigen/Core>
+#include <pcl/point_cloud.h>
 
 #include <android/log.h>
 
@@ -48,12 +49,19 @@
 #define HOUGH_UNIT_ 100
 
 namespace keymolen {
-
     struct box {
-        float minx;
-        float maxx;
-        float miny;
-        float maxy;
+        float minx = std::numeric_limits<float>::max();
+        float maxx = std::numeric_limits<float>::lowest();
+        float miny = std::numeric_limits<float>::max();
+        float maxy = std::numeric_limits<float>::lowest();
+
+        inline bool operator==(const box& other) const {
+            return minx == other.minx and miny == other.miny and maxx == other.maxx and maxy == other.maxy;
+        }
+
+        inline bool operator!=(const box& other) const {
+            return minx != other.minx or miny != other.miny or maxx != other.maxx or maxy != other.maxy;
+        }
 
 	    inline Eigen::Vector2f project(Eigen::Vector2f pt) {
 	        Eigen::Vector2f p = {minx, miny};
@@ -75,15 +83,22 @@ namespace keymolen {
 		Hough();
 		virtual ~Hough();
 	public:
-		void Transform(std::vector<Eigen::Vector2f> points, box bornes);
-		std::vector< std::pair< std::pair< Eigen::Vector2f, Eigen::Vector2f >, std::vector<Eigen::Vector2f> > > GetLines(int threshold);
+		void AddPointCloud(pcl::PointCloud<Eigen::Vector2f>::Ptr cloud);
+		void RemovePointCloud(pcl::PointCloud<Eigen::Vector2f>::Ptr cloud);
+		std::vector<Eigen::ParametrizedLine<float, 2>> GetLines(int threshold);
+		std::vector<pcl::PointCloud<Eigen::Vector2f>::Ptr> GetAccus(int threshold);
+		std::vector<std::pair<Eigen::Vector2f, Eigen::Vector2f>> GetSegments(int threshold);
+		std::vector<Eigen::Vector2f>& GetAccuCell(int w, int h);
 		std::vector<Eigen::Vector2f>** GetAccu(int *w, int *h);
 	private:
+	    void recomputeBox(pcl::PointCloud<Eigen::Vector2f>::Ptr cloud);
+		void updateBox(box newbox);
 		std::vector<Eigen::Vector2f>** _accu;
 		int _accu_w;
 		int _accu_h;
 		int _img_w;
 		int _img_h;
+		int _hough_h;
 		box _bornes;
 	};
 

@@ -12,6 +12,7 @@ LOCAL_C_INCLUDES += $(LOCAL_PATH) \
 LOCAL_EXPORT_C_INCLUDES += $(LOCAL_PATH)
 LOCAL_EXPORT_LDLIBS := -lz
 
-LOCAL_STATIC_LIBRARIES := Eigen
+LOCAL_STATIC_LIBRARIES := Eigen \
+                          libpcl_common
 
 include $(BUILD_STATIC_LIBRARY)

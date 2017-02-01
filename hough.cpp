@@ -55,71 +55,138 @@ namespace keymolen {
          }
 	}
 
-	void Hough::Transform(std::vector<Eigen::Vector2f> points, box b) {
+    void Hough::recomputeBox(pcl::PointCloud<Eigen::Vector2f>::Ptr cloud) {
 
-		_bornes = b;
+        box b = _bornes;
 
-		_img_w = _bornes.getW();
-		_img_h = _bornes.getH();
+        for (auto pt : cloud->points) {
+            b.minx = std::min(b.minx, pt.x());
+            b.maxx = std::max(b.maxx, pt.x());
+            b.miny = std::min(b.miny, pt.y());
+            b.maxy = std::max(b.maxy, pt.y());
+        }
+
+        if (b != _bornes)
+            updateBox(b);
+    }
+
+    void Hough::updateBox(box newbox) {
+
+		int new_img_w = newbox.getW();
+		int new_img_h = newbox.getH();
 
 		//Create the accu
-		double hough_h = sqrt(2.0) * std::max(_img_w, _img_h) / 2.0;
-		_accu_h = hough_h * 2.0 + 1; // -r -> +r
-		_accu_w = 180;
+		int new_hough_h = sqrt(2.0) * std::max(_img_w, _img_h) / 2.0;
+		int new_accu_h = new_hough_h * 2.0 + 1; // -r -> +r
+		int new_accu_w = 180;
 
-		if(_accu_h == 0) return;
+		std::vector<Eigen::Vector2f>** new_accu = new std::vector<Eigen::Vector2f>*[new_accu_h];
+		for(int r=0;r<new_accu_h;r++) {
+		    new_accu[r] = new std::vector<Eigen::Vector2f>[new_accu_w];
+			for(int t=0;t<new_accu_w;t++) {
+                std::vector<Eigen::Vector2f> vect;
+                new_accu[r][t] = vect;
+            }
+        }
 
 		if(_accu) {
+            // copy old _accu
+            int dw = (new_accu_w - _accu_w)/2;
+            int dh = (new_accu_h - _accu_h)/2;
+
+            for(int r=0;r<_accu_h;r++) {
+                for(int t=0;t<_accu_w;t++) {
+                    new_accu[r+dh][t+dw] = GetAccuCell(r, t);
+                }
+            }
+
             for(int r=0;r<_accu_h;r++) {
                 delete[] _accu[r];
 			}
             delete[] _accu;
         }
-		//_accu = (std::vector<Eigen::Vector2f>*)std::malloc(_accu_h * _accu_w * sizeof(std::vector<Eigen::Vector2f>));
-		_accu = new std::vector<Eigen::Vector2f>*[_accu_h];
-		for(int r=0;r<_accu_h;r++) {
-		    _accu[r] = new std::vector<Eigen::Vector2f>[_accu_w];
-			for(int t=0;t<_accu_w;t++) {
-                std::vector<Eigen::Vector2f> vect;
-                _accu[r][t] = vect;
-            }
-        }
+        _accu = new_accu;
+        _bornes = newbox;
+
+		_img_w = new_img_w;
+		_img_h = new_img_h;
+
+		_hough_h = new_hough_h;
+		_accu_h = new_accu_h;
+		_accu_w = new_accu_w;
+    }
+
+    void Hough::AddPointCloud(pcl::PointCloud<Eigen::Vector2f>::Ptr cloud) {
+
+        if (cloud->points.size() == 0) return;
+
+        recomputeBox(cloud);
+
+		if(_accu_h == 0) return;
 
 		double center_x = _img_w/2;
 		double center_y = _img_h/2;
 
-        for (auto pt : points) {
+        for (auto pt : cloud->points) {
             auto proj = _bornes.project(pt);
             for(int t=0;t<180;t++) {
                 double r = (proj(0) - center_x) * std::cos(t * DEG2RAD) + (proj(1) - center_y) * std::sin(t * DEG2RAD);
-                _accu[(int)(round(r + hough_h))][t].push_back(pt);
+                auto cell = GetAccuCell((int)(round(r + _hough_h)), t);
+                cell.push_back(pt);
             }
         }
 	}
 
-	std::vector< std::pair< std::pair< Eigen::Vector2f, Eigen::Vector2f >, std::vector<Eigen::Vector2f> > > Hough::GetLines(int threshold) {
-	    std::vector< std::pair< std::pair< Eigen::Vector2f, Eigen::Vector2f >, std::vector<Eigen::Vector2f> > > lines;
+    std::vector<Eigen::Vector2f>& Hough::GetAccuCell(int w, int h) {
+        return _accu[w][h];
+    }
+
+    void Hough::RemovePointCloud(pcl::PointCloud<Eigen::Vector2f>::Ptr cloud) {
+
+        if (cloud->points.size() == 0) return;
+
+		if(_accu_h == 0) return;
+
+		double center_x = _img_w/2;
+		double center_y = _img_h/2;
+
+        for (auto pt : cloud->points) {
+            auto proj = _bornes.project(pt);
+            for(int t=0;t<180;t++) {
+                double r = (proj(0) - center_x) * std::cos(t * DEG2RAD) + (proj(1) - center_y) * std::sin(t * DEG2RAD);
+                auto cell = GetAccuCell((int)(round(r + _hough_h)), t);
+                auto it = std::find(cell.begin(), cell.end(), pt);
+                if (it != cell.end()) {
+                  std::swap(*it, cell.back());
+                  cell.pop_back();
+                }
+            }
+        }
+	}
+
+	std::vector<Eigen::ParametrizedLine<float, 2>> Hough::GetLines(int threshold) {
+	    std::vector<Eigen::ParametrizedLine<float, 2>> lines;
 
 		if(_accu == 0)
 			return lines;
 
 		for(int r=0;r<_accu_h;r++) {
 			for(int t=0;t<_accu_w;t++) {
-				if(_accu[r][t].size() >= threshold) {
+				if(GetAccuCell(r, t).size() >= threshold) {
 					//Is this point a local maxima (9x9)
 					int loc = 15 / 2;
-					int max = _accu[r][t].size();
+					int max = GetAccuCell(r, t).size();
 					for(int ly=-loc;ly<=loc;ly++) {
 						for(int lx=-loc;lx<=loc;lx++) {
 							if( (ly+r>=0 && ly+r<_accu_h) && (lx+t>=0 && lx+t<_accu_w)  ) {
-								if( _accu[r+ly][t+lx].size() > max ) {
-									max = _accu[r+ly][t+lx].size();
+								if( GetAccuCell(r+ly, t+lx).size() > max ) {
+									max = GetAccuCell(r+ly, t+lx).size();
 									ly = lx = 5;
 								}
 							}
 						}
 					}
-					if(max > _accu[r][t].size())
+					if(max > GetAccuCell(r, t).size())
 						continue;
 
 					float x1, y1, x2, y2;
@@ -140,8 +207,8 @@ namespace keymolen {
 					}
                     Eigen::Vector2f p1 = _bornes.unproject({x1, y1});
                     Eigen::Vector2f p2 = _bornes.unproject({x2, y2});
-                    std::pair< Eigen::Vector2f, Eigen::Vector2f > line = std::make_pair(p1, p2);
-					lines.push_back(std::make_pair(line, _accu[r][t]));
+                    Eigen::ParametrizedLine<float, 2> line = Eigen::ParametrizedLine<float, 2>::Through(p1,p2);
+					lines.push_back(line);
 
 				}
 			}
