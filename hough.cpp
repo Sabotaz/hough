@@ -164,11 +164,74 @@ namespace keymolen {
         }
 	}
 
+    std::vector<std::pair<Eigen::Vector2f, Eigen::Vector2f>> Hough::GetSegments(int threshold, float dist_between_parts) {
+	    std::vector<std::pair<Eigen::Vector2f, Eigen::Vector2f>> segments;
+	    for (auto eye : GetAccuEyes(threshold)) {
+	        auto cell = GetAccuCell(eye.first, eye.second);
+
+            if (cell.size()== 0) continue;
+
+            auto line = ToParametrizedLine(eye.first, eye.second);
+
+            auto sort = [&line](const Eigen::Vector2f &a, const Eigen::Vector2f &b) {
+                Eigen::Vector2f p1 = line.projection(a);
+                Eigen::Vector2f p2 = line.projection(b);
+                return (p1 - line.origin()).norm() < (p2 - line.origin()).norm();
+            };
+
+            if (not std::is_sorted(cell.begin(), cell.end(), sort))
+                std::sort(cell.begin(), cell.end(), sort);
+
+            Eigen::Vector2f start = cell[0];
+            for (int i = 0; i < cell.size()-1; ++i ) {
+                if ((cell[i+1]-cell[i]).norm() > dist_between_parts) {
+                    segments.push_back(std::make_pair(start,cell[i]));
+                    start = cell[i+1];
+                }
+            }
+            segments.push_back(std::make_pair(start,cell[cell.size()-1])); // add last segment
+	    }
+	    return segments;
+    }
+
 	std::vector<Eigen::ParametrizedLine<float, 2>> Hough::GetLines(int threshold) {
 	    std::vector<Eigen::ParametrizedLine<float, 2>> lines;
+	    for (auto eye : GetAccuEyes(threshold)) {
+	        lines.push_back(ToParametrizedLine(eye.first, eye.second));
+	    }
+	    return lines;
+	}
+
+	Eigen::ParametrizedLine<float, 2> Hough::ToParametrizedLine(int r, int t) {
+
+        float x1, y1, x2, y2;
+        x1 = y1 = x2 = y2 = 0;
+
+        if(t >= 45 && t <= 135) {
+            //y = (r - x cos(t)) / sin(t)
+            x1 = 0;
+            y1 = ((r-(_accu_h/2)) - ((x1 - (_img_w/2) ) * std::cos(t * DEG2RAD))) / std::sin(t * DEG2RAD) + (_img_h / 2);
+            x2 = _img_w - 0;
+            y2 = ((r-(_accu_h/2)) - ((x2 - (_img_w/2) ) * std::cos(t * DEG2RAD))) / std::sin(t * DEG2RAD) + (_img_h / 2);
+        } else {
+            //x = (r - y sin(t)) / cos(t);
+            y1 = 0;
+            x1 = ((r-(_accu_h/2)) - ((y1 - (_img_h/2) ) * std::sin(t * DEG2RAD))) / std::cos(t * DEG2RAD) + (_img_w / 2);
+            y2 = _img_h - 0;
+            x2 = ((r-(_accu_h/2)) - ((y2 - (_img_h/2) ) * std::sin(t * DEG2RAD))) / std::cos(t * DEG2RAD) + (_img_w / 2);
+        }
+        Eigen::Vector2f p1 = _bornes.unproject({x1, y1});
+        Eigen::Vector2f p2 = _bornes.unproject({x2, y2});
+        Eigen::ParametrizedLine<float, 2> line = Eigen::ParametrizedLine<float, 2>::Through(p1,p2);
+        return line;
+
+	}
+
+	std::vector<std::pair<int,int>> Hough::GetAccuEyes(int threshold) {
+	    std::vector<std::pair<int,int>> eyes;
 
 		if(_accu == 0)
-			return lines;
+			return eyes;
 
 		for(int r=0;r<_accu_h;r++) {
 			for(int t=0;t<_accu_w;t++) {
@@ -189,33 +252,14 @@ namespace keymolen {
 					if(max > GetAccuCell(r, t).size())
 						continue;
 
-					float x1, y1, x2, y2;
-					x1 = y1 = x2 = y2 = 0;
-
-					if(t >= 45 && t <= 135) {
-						//y = (r - x cos(t)) / sin(t)
-						x1 = 0;
-						y1 = ((r-(_accu_h/2)) - ((x1 - (_img_w/2) ) * std::cos(t * DEG2RAD))) / std::sin(t * DEG2RAD) + (_img_h / 2);
-						x2 = _img_w - 0;
-						y2 = ((r-(_accu_h/2)) - ((x2 - (_img_w/2) ) * std::cos(t * DEG2RAD))) / std::sin(t * DEG2RAD) + (_img_h / 2);
-					} else {
-						//x = (r - y sin(t)) / cos(t);
-						y1 = 0;
-						x1 = ((r-(_accu_h/2)) - ((y1 - (_img_h/2) ) * std::sin(t * DEG2RAD))) / std::cos(t * DEG2RAD) + (_img_w / 2);
-						y2 = _img_h - 0;
-						x2 = ((r-(_accu_h/2)) - ((y2 - (_img_h/2) ) * std::sin(t * DEG2RAD))) / std::cos(t * DEG2RAD) + (_img_w / 2);
-					}
-                    Eigen::Vector2f p1 = _bornes.unproject({x1, y1});
-                    Eigen::Vector2f p2 = _bornes.unproject({x2, y2});
-                    Eigen::ParametrizedLine<float, 2> line = Eigen::ParametrizedLine<float, 2>::Through(p1,p2);
-					lines.push_back(line);
+					eyes.push_back(std::make_pair(r, t));
 
 				}
 			}
 		}
 
-		LOGI("lines: %d, threshold: %d", lines.size(), threshold);
-		return lines;
+		LOGI("eyes: %d, threshold: %d", eyes.size(), threshold);
+		return eyes;
 	}
 
 	std::vector<Eigen::Vector2f>** Hough::GetAccu(int *w, int *h) {
