@@ -37,6 +37,8 @@
 
 #include <vector>
 #include <Eigen/Core>
+#include <Eigen/StdVector>
+
 #include <pcl/point_cloud.h>
 
 #include <android/log.h>
@@ -86,8 +88,8 @@ namespace keymolen {
 		void AddPointCloud(pcl::PointCloud<Eigen::Vector2f>::Ptr cloud);
 		void RemovePointCloud(pcl::PointCloud<Eigen::Vector2f>::Ptr cloud);
 
-		std::vector<Eigen::Vector2f>* GetAccuCell(int w, int h);
-		std::vector<Eigen::Vector2f>** GetAccu(int *w, int *h);
+		std::vector<Eigen::Vector2f,Eigen::aligned_allocator<Eigen::Vector2f> >* GetAccuCell(int w, int h);
+		std::vector<Eigen::Vector2f,Eigen::aligned_allocator<Eigen::Vector2f> >** GetAccu(int *w, int *h);
 
 	    std::vector<Eigen::ParametrizedLine<float, 2>> GetLines(int threshold);
         std::vector<std::pair<Eigen::Vector2f, Eigen::Vector2f>> GetSegments(int threshold, float dist_between_parts = 1.00);
@@ -100,7 +102,7 @@ namespace keymolen {
 
 	    Eigen::ParametrizedLine<float, 2> ToParametrizedLine(int r, int t);
 
-		std::vector<Eigen::Vector2f>** _accu;
+		std::vector<Eigen::Vector2f,Eigen::aligned_allocator<Eigen::Vector2f> >** _accu;
 		int _accu_w;
 		int _accu_h;
 		int _img_w;

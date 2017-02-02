@@ -37,7 +37,7 @@
 #include <iostream>
 #include <string.h>
 #include <stdlib.h>
-#define CLAMP(x, min, max) x<min?min:(x>max?max:x)
+#define CLAMP(x, min, max) ((x)<(min)?(min):((x)>(max)?(max):(x)))
 
 #define DEG2RAD 0.017453293f
 
@@ -76,15 +76,15 @@ namespace keymolen {
 		int new_img_h = newbox.getH();
 
 		//Create the accu
-		int new_hough_h = sqrt(2.0) * std::max(new_img_w, new_img_h) / 2.0 + 1;
+		int new_hough_h = sqrt(2.0) * std::max(new_img_w, new_img_h) / 2.0;
 		int new_accu_h = new_hough_h * 2.0 + 1; // -r -> +r
 		int new_accu_w = 180;
 
-		std::vector<Eigen::Vector2f>** new_accu = new std::vector<Eigen::Vector2f>*[new_accu_h];
+		std::vector<Eigen::Vector2f,Eigen::aligned_allocator<Eigen::Vector2f> >** new_accu = new std::vector<Eigen::Vector2f,Eigen::aligned_allocator<Eigen::Vector2f> >*[new_accu_h];
 		for(int r=0;r<new_accu_h;r++) {
-		    new_accu[r] = new std::vector<Eigen::Vector2f>[new_accu_w];
+		    new_accu[r] = new std::vector<Eigen::Vector2f,Eigen::aligned_allocator<Eigen::Vector2f> >[new_accu_w];
 			for(int t=0;t<new_accu_w;t++) {
-                std::vector<Eigen::Vector2f> vect;
+                std::vector<Eigen::Vector2f,Eigen::aligned_allocator<Eigen::Vector2f> > vect;
                 new_accu[r][t] = vect;
             }
         }
@@ -98,7 +98,6 @@ namespace keymolen {
                 for(int t=0;t<_accu_w;t++) {
                     auto cell = GetAccuCell(r, t);
                     new_accu[r+dh][t+dw].insert(new_accu[r+dh][t+dw].end(), cell->begin(), cell->end());
-
                 }
             }
 
@@ -139,7 +138,7 @@ namespace keymolen {
         }
 	}
 
-    std::vector<Eigen::Vector2f>* Hough::GetAccuCell(int h, int w) {
+    std::vector<Eigen::Vector2f,Eigen::aligned_allocator<Eigen::Vector2f> >* Hough::GetAccuCell(int h, int w) {
         return &_accu[h][w];
     }
 
@@ -152,6 +151,8 @@ namespace keymolen {
 		double center_x = _img_w/2;
 		double center_y = _img_h/2;
 
+		int removed = 0;
+
         for (auto pt : cloud->points) {
             auto proj = _bornes.project(pt);
             for(int t=0;t<180;t++) {
@@ -161,6 +162,20 @@ namespace keymolen {
                 if (it != cell->end()) {
                   std::swap(*it, cell->back());
                   cell->pop_back();
+                  removed += 1;
+                } else {
+                    for(int h=0;h<_accu_h;h++) {
+                        auto cell = GetAccuCell(h, t);
+                        auto it = std::find(cell->begin(), cell->end(), pt);
+                        if (it != cell->end()) {
+                            int dr = std::abs(h-CLAMP((int)(round(r + _hough_h)), 0, _accu_h-1));
+                            if (dr <= 5) {
+                                std::swap(*it, cell->back());
+                                cell->pop_back();
+                                removed += 1;
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -254,6 +269,7 @@ namespace keymolen {
 					if(max > GetAccuCell(r, t)->size())
 						continue;
 
+                    LOGD("eye size : %d", max);
 					eyes.push_back(std::make_pair(r, t));
 
 				}
@@ -262,7 +278,7 @@ namespace keymolen {
 		return eyes;
 	}
 
-	std::vector<Eigen::Vector2f>** Hough::GetAccu(int *w, int *h) {
+	std::vector<Eigen::Vector2f,Eigen::aligned_allocator<Eigen::Vector2f> >** Hough::GetAccu(int *w, int *h) {
 		*w = _accu_w;
 		*h = _accu_h;
 
