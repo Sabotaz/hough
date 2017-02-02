@@ -37,6 +37,7 @@
 #include <iostream>
 #include <string.h>
 #include <stdlib.h>
+#define CLAMP(x, min, max) x<min?min:(x>max?max:x)
 
 #define DEG2RAD 0.017453293f
 
@@ -71,12 +72,11 @@ namespace keymolen {
     }
 
     void Hough::updateBox(box newbox) {
-
 		int new_img_w = newbox.getW();
 		int new_img_h = newbox.getH();
 
 		//Create the accu
-		int new_hough_h = sqrt(2.0) * std::max(_img_w, _img_h) / 2.0;
+		int new_hough_h = sqrt(2.0) * std::max(new_img_w, new_img_h) / 2.0 + 1;
 		int new_accu_h = new_hough_h * 2.0 + 1; // -r -> +r
 		int new_accu_w = 180;
 
@@ -96,7 +96,9 @@ namespace keymolen {
 
             for(int r=0;r<_accu_h;r++) {
                 for(int t=0;t<_accu_w;t++) {
-                    new_accu[r+dh][t+dw] = GetAccuCell(r, t);
+                    auto cell = GetAccuCell(r, t);
+                    new_accu[r+dh][t+dw].insert(new_accu[r+dh][t+dw].end(), cell->begin(), cell->end());
+
                 }
             }
 
@@ -131,14 +133,14 @@ namespace keymolen {
             auto proj = _bornes.project(pt);
             for(int t=0;t<180;t++) {
                 double r = (proj(0) - center_x) * std::cos(t * DEG2RAD) + (proj(1) - center_y) * std::sin(t * DEG2RAD);
-                auto cell = GetAccuCell((int)(round(r + _hough_h)), t);
-                cell.push_back(pt);
+                auto cell = GetAccuCell(CLAMP((int)(round(r + _hough_h)), 0, _accu_h-1), t);
+                cell->push_back(pt);
             }
         }
 	}
 
-    std::vector<Eigen::Vector2f>& Hough::GetAccuCell(int w, int h) {
-        return _accu[w][h];
+    std::vector<Eigen::Vector2f>* Hough::GetAccuCell(int h, int w) {
+        return &_accu[h][w];
     }
 
     void Hough::RemovePointCloud(pcl::PointCloud<Eigen::Vector2f>::Ptr cloud) {
@@ -154,11 +156,11 @@ namespace keymolen {
             auto proj = _bornes.project(pt);
             for(int t=0;t<180;t++) {
                 double r = (proj(0) - center_x) * std::cos(t * DEG2RAD) + (proj(1) - center_y) * std::sin(t * DEG2RAD);
-                auto cell = GetAccuCell((int)(round(r + _hough_h)), t);
-                auto it = std::find(cell.begin(), cell.end(), pt);
-                if (it != cell.end()) {
-                  std::swap(*it, cell.back());
-                  cell.pop_back();
+                auto cell = GetAccuCell(CLAMP((int)(round(r + _hough_h)), 0, _accu_h-1), t);
+                auto it = std::find(cell->begin(), cell->end(), pt);
+                if (it != cell->end()) {
+                  std::swap(*it, cell->back());
+                  cell->pop_back();
                 }
             }
         }
@@ -169,7 +171,7 @@ namespace keymolen {
 	    for (auto eye : GetAccuEyes(threshold)) {
 	        auto cell = GetAccuCell(eye.first, eye.second);
 
-            if (cell.size()== 0) continue;
+            if (cell->size()== 0) continue;
 
             auto line = ToParametrizedLine(eye.first, eye.second);
 
@@ -179,17 +181,17 @@ namespace keymolen {
                 return (p1 - line.origin()).norm() < (p2 - line.origin()).norm();
             };
 
-            if (not std::is_sorted(cell.begin(), cell.end(), sort))
-                std::sort(cell.begin(), cell.end(), sort);
+            if (not std::is_sorted(cell->begin(), cell->end(), sort))
+                std::sort(cell->begin(), cell->end(), sort);
 
-            Eigen::Vector2f start = cell[0];
-            for (int i = 0; i < cell.size()-1; ++i ) {
-                if ((cell[i+1]-cell[i]).norm() > dist_between_parts) {
-                    segments.push_back(std::make_pair(start,cell[i]));
-                    start = cell[i+1];
+            Eigen::Vector2f start = (*cell)[0];
+            for (int i = 0; i < cell->size()-1; ++i ) {
+                if (((*cell)[i+1]-(*cell)[i]).norm() > dist_between_parts) {
+                    segments.push_back(std::make_pair(start,(*cell)[i]));
+                    start = (*cell)[i+1];
                 }
             }
-            segments.push_back(std::make_pair(start,cell[cell.size()-1])); // add last segment
+            segments.push_back(std::make_pair(start,(*cell)[cell->size()-1])); // add last segment
 	    }
 	    return segments;
     }
@@ -235,21 +237,21 @@ namespace keymolen {
 
 		for(int r=0;r<_accu_h;r++) {
 			for(int t=0;t<_accu_w;t++) {
-				if(GetAccuCell(r, t).size() >= threshold) {
+				if(GetAccuCell(r, t)->size() >= threshold) {
 					//Is this point a local maxima (9x9)
 					int loc = 15 / 2;
-					int max = GetAccuCell(r, t).size();
+					int max = GetAccuCell(r, t)->size();
 					for(int ly=-loc;ly<=loc;ly++) {
 						for(int lx=-loc;lx<=loc;lx++) {
 							if( (ly+r>=0 && ly+r<_accu_h) && (lx+t>=0 && lx+t<_accu_w)  ) {
-								if( GetAccuCell(r+ly, t+lx).size() > max ) {
-									max = GetAccuCell(r+ly, t+lx).size();
+								if( GetAccuCell(r+ly, t+lx)->size() > max ) {
+									max = GetAccuCell(r+ly, t+lx)->size();
 									ly = lx = 5;
 								}
 							}
 						}
 					}
-					if(max > GetAccuCell(r, t).size())
+					if(max > GetAccuCell(r, t)->size())
 						continue;
 
 					eyes.push_back(std::make_pair(r, t));
@@ -257,8 +259,6 @@ namespace keymolen {
 				}
 			}
 		}
-
-		LOGI("eyes: %d, threshold: %d", eyes.size(), threshold);
 		return eyes;
 	}
 

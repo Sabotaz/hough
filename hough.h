@@ -86,7 +86,7 @@ namespace keymolen {
 		void AddPointCloud(pcl::PointCloud<Eigen::Vector2f>::Ptr cloud);
 		void RemovePointCloud(pcl::PointCloud<Eigen::Vector2f>::Ptr cloud);
 
-		std::vector<Eigen::Vector2f>& GetAccuCell(int w, int h);
+		std::vector<Eigen::Vector2f>* GetAccuCell(int w, int h);
 		std::vector<Eigen::Vector2f>** GetAccu(int *w, int *h);
 
 	    std::vector<Eigen::ParametrizedLine<float, 2>> GetLines(int threshold);
