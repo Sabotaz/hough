@@ -142,6 +142,14 @@ namespace keymolen {
         return &_accu[h][w];
     }
 
+    void Hough::Clear() {
+        for(int r=0;r<_accu_h;r++) {
+            for(int t=0;t<_accu_w;t++) {
+                GetAccuCell(r, t)->clear();
+            }
+        }
+    }
+
     void Hough::RemovePointCloud(pcl::PointCloud<Eigen::Vector2f>::Ptr cloud) {
 
         if (cloud->points.size() == 0) return;

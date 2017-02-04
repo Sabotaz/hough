@@ -87,6 +87,7 @@ namespace keymolen {
 	public:
 		void AddPointCloud(pcl::PointCloud<Eigen::Vector2f>::Ptr cloud);
 		void RemovePointCloud(pcl::PointCloud<Eigen::Vector2f>::Ptr cloud);
+		void Clear();
 
 		std::vector<Eigen::Vector2f,Eigen::aligned_allocator<Eigen::Vector2f> >* GetAccuCell(int w, int h);
 		std::vector<Eigen::Vector2f,Eigen::aligned_allocator<Eigen::Vector2f> >** GetAccu(int *w, int *h);
