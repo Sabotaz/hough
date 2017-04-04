@@ -43,44 +43,89 @@
 
 namespace keymolen {
 
-	Hough::Hough():_accu(0), _accu_w(0), _accu_h(0), _img_w(0), _img_h(0) {
+	Hough::Hough():_accu_total(0), _accu_w(0), _accu_h(0), _img_w(0), _img_h(0) {
 
 	}
 
 	Hough::~Hough() {
-		if(_accu) {
+		if(_accu_total) {
              for(int r=0;r<_accu_h;r++) {
-                 delete[] _accu[r];
+                 delete[] _accu_total[r];
             }
-             delete[] _accu;
-         }
+             delete[] _accu_total;
+        }
 	}
 
-    void Hough::recomputeBox(pcl::PointCloud<Eigen::Vector2f>::Ptr cloud) {
+	void Hough::setStartPosition(float x, float y) {
 
-        box b = _bornes;
+        _bornes.minx = x-10;
+        _bornes.maxx = x+10;
+        _bornes.miny = y-10;
+        _bornes.maxy = y+10;
 
-        for (auto pt : cloud->points) {
-            b.minx = std::min(b.minx, pt.x());
-            b.maxx = std::max(b.maxx, pt.x());
-            b.miny = std::min(b.miny, pt.y());
-            b.maxy = std::max(b.maxy, pt.y());
+        newAccumulateur();
+
+	}
+
+	void Hough::newAccumulateur() {
+	    for (auto pair : _accu_dict) {
+	        uint id = pair.first;
+            for(int r=0;r<_accu_h;r++) {
+                delete[] _accu_dict[id][r];
+			}
+            delete[] _accu_dict[id];
+	    }
+	    _accu_dict.clear();
+
+	    makeAccumulateur();
+
+	}
+
+    void Hough::makeAccumulateur() {
+
+		if(_accu_total) {
+            for(int r=0;r<_accu_h;r++) {
+                delete[] _accu_total[r];
+			}
+            delete[] _accu_total;
         }
 
-        if (b != _bornes)
-            updateBox(b);
+		_img_w = _bornes.getW();
+		_img_h = _bornes.getH();
+
+		//Create the accu
+		_hough_h = sqrt(2.0) * std::max(_img_w, _img_w) / 2.0;
+		_accu_h = _hough_h * 2.0 + 1; // -r -> +r
+		_accu_w = 180;
+
+		_accu_total = new CELL[_accu_h];
+		for(int r=0;r<_accu_h;r++) {
+		    _accu_total[r] = new std::vector<Eigen::Vector2f,Eigen::aligned_allocator<Eigen::Vector2f> >[_accu_w];
+			for(int t=0;t<_accu_w;t++) {
+                std::vector<Eigen::Vector2f,Eigen::aligned_allocator<Eigen::Vector2f> > vect;
+                _accu_total[r][t] = vect;
+            }
+        }
     }
 
-    void Hough::updateBox(box newbox) {
-		int new_img_w = newbox.getW();
-		int new_img_h = newbox.getH();
+    void Hough::makeAccumulateur(uint id) {
+
+		if(_accu_dict.find(id) != _accu_dict.end()) {
+            for(int r=0;r<_accu_h;r++) {
+                delete[] _accu_dict[id][r];
+			}
+            delete[] _accu_dict[id];
+        }
+
+		int new_img_w = _bornes.getW();
+		int new_img_h = _bornes.getH();
 
 		//Create the accu
 		int new_hough_h = sqrt(2.0) * std::max(new_img_w, new_img_h) / 2.0;
 		int new_accu_h = new_hough_h * 2.0 + 1; // -r -> +r
 		int new_accu_w = 180;
 
-		std::vector<Eigen::Vector2f,Eigen::aligned_allocator<Eigen::Vector2f> >** new_accu = new std::vector<Eigen::Vector2f,Eigen::aligned_allocator<Eigen::Vector2f> >*[new_accu_h];
+		ACCUMULATEUR new_accu = new CELL[new_accu_h];
 		for(int r=0;r<new_accu_h;r++) {
 		    new_accu[r] = new std::vector<Eigen::Vector2f,Eigen::aligned_allocator<Eigen::Vector2f> >[new_accu_w];
 			for(int t=0;t<new_accu_w;t++) {
@@ -89,57 +134,39 @@ namespace keymolen {
             }
         }
 
-		if(_accu) {
-            // copy old _accu
-            int dw = (new_accu_w - _accu_w)/2;
-            int dh = (new_accu_h - _accu_h)/2;
-
-            for(int r=0;r<_accu_h;r++) {
-                for(int t=0;t<_accu_w;t++) {
-                    auto cell = GetAccuCell(r, t);
-                    new_accu[r+dh][t+dw].insert(new_accu[r+dh][t+dw].end(), cell->begin(), cell->end());
-                }
-            }
-
-            for(int r=0;r<_accu_h;r++) {
-                delete[] _accu[r];
-			}
-            delete[] _accu;
-        }
-        _accu = new_accu;
-        _bornes = newbox;
-
-		_img_w = new_img_w;
-		_img_h = new_img_h;
-
-		_hough_h = new_hough_h;
-		_accu_h = new_accu_h;
-		_accu_w = new_accu_w;
+        _accu_dict[id] = new_accu;
     }
 
-    void Hough::AddPointCloud(pcl::PointCloud<Eigen::Vector2f>::Ptr cloud) {
+    void Hough::AddPointCloud(uint id, pcl::PointCloud<Eigen::Vector2f>::Ptr cloud) {
+
+		Clear(id);
 
         if (cloud->points.size() == 0) return;
-
-        recomputeBox(cloud);
 
 		if(_accu_h == 0) return;
 
 		double center_x = _img_w/2;
 		double center_y = _img_h/2;
 
+
         for (auto pt : cloud->points) {
             auto proj = _bornes.project(pt);
             for(int t=0;t<180;t++) {
                 double r = (proj(0) - center_x) * std::cos(t * DEG2RAD) + (proj(1) - center_y) * std::sin(t * DEG2RAD);
-                auto cell = GetAccuCell(CLAMP((int)(round(r + _hough_h)), 0, _accu_h-1), t);
+                auto cell = GetAccuCell(id, CLAMP((int)(round(r + _hough_h)), 0, _accu_h-1), t);
                 cell->push_back(pt);
             }
         }
+	    is_accu_uptodate = false;
 	}
 
-    std::vector<Eigen::Vector2f,Eigen::aligned_allocator<Eigen::Vector2f> >* Hough::GetAccuCell(int h, int w) {
-        return &_accu[h][w];
+    CELL Hough::GetAccuCell(int h, int w) {
+        ComputeTotalAccu();
+        return &_accu_total[h][w];
+    }
+
+    CELL Hough::GetAccuCell(uint id, int h, int w) {
+        return &_accu_dict[id][h][w];
     }
 
     void Hough::Clear() {
@@ -150,46 +177,22 @@ namespace keymolen {
         }
     }
 
-    void Hough::RemovePointCloud(pcl::PointCloud<Eigen::Vector2f>::Ptr cloud) {
+    void Hough::Clear(uint id) {
 
-        if (cloud->points.size() == 0) return;
-
-		if(_accu_h == 0) return;
-
-		double center_x = _img_w/2;
-		double center_y = _img_h/2;
-
-		int removed = 0;
-
-        for (auto pt : cloud->points) {
-            auto proj = _bornes.project(pt);
-            for(int t=0;t<180;t++) {
-                double r = (proj(0) - center_x) * std::cos(t * DEG2RAD) + (proj(1) - center_y) * std::sin(t * DEG2RAD);
-                auto cell = GetAccuCell(CLAMP((int)(round(r + _hough_h)), 0, _accu_h-1), t);
-                auto it = std::find(cell->begin(), cell->end(), pt);
-                if (it != cell->end()) {
-                  std::swap(*it, cell->back());
-                  cell->pop_back();
-                  removed += 1;
-                } else {
-                    for(int h=0;h<_accu_h;h++) {
-                        auto cell = GetAccuCell(h, t);
-                        auto it = std::find(cell->begin(), cell->end(), pt);
-                        if (it != cell->end()) {
-                            int dr = std::abs(h-CLAMP((int)(round(r + _hough_h)), 0, _accu_h-1));
-                            if (dr <= 5) {
-                                std::swap(*it, cell->back());
-                                cell->pop_back();
-                                removed += 1;
-                            }
-                        }
-                    }
+		if(_accu_dict.find(id) == _accu_dict.end()) {
+		    makeAccumulateur(id);
+		} else {
+            for(int r=0;r<_accu_h;r++) {
+                for(int t=0;t<_accu_w;t++) {
+                    GetAccuCell(id, r, t)->clear();
                 }
             }
         }
-	}
+    }
 
     std::vector<std::pair<Eigen::Vector2f, Eigen::Vector2f>> Hough::GetSegments(int threshold, float dist_between_parts) {
+        ComputeTotalAccu();
+
 	    std::vector<std::pair<Eigen::Vector2f, Eigen::Vector2f>> segments;
 	    for (auto eye : GetAccuEyes(threshold)) {
 	        auto cell = GetAccuCell(eye.first, eye.second);
@@ -220,6 +223,8 @@ namespace keymolen {
     }
 
 	std::vector<Eigen::ParametrizedLine<float, 2>> Hough::GetLines(int threshold) {
+	    ComputeTotalAccu();
+
 	    std::vector<Eigen::ParametrizedLine<float, 2>> lines;
 	    for (auto eye : GetAccuEyes(threshold)) {
 	        lines.push_back(ToParametrizedLine(eye.first, eye.second));
@@ -228,6 +233,7 @@ namespace keymolen {
 	}
 
 	Eigen::ParametrizedLine<float, 2> Hough::ToParametrizedLine(int r, int t) {
+	    ComputeTotalAccu();
 
         float x1, y1, x2, y2;
         x1 = y1 = x2 = y2 = 0;
@@ -253,9 +259,10 @@ namespace keymolen {
 	}
 
 	std::vector<std::pair<int,int>> Hough::GetAccuEyes(int threshold) {
+	    ComputeTotalAccu();
 	    std::vector<std::pair<int,int>> eyes;
 
-		if(_accu == 0)
+		if(_accu_total == 0)
 			return eyes;
 
 		for(int r=0;r<_accu_h;r++) {
@@ -286,10 +293,30 @@ namespace keymolen {
 		return eyes;
 	}
 
-	std::vector<Eigen::Vector2f,Eigen::aligned_allocator<Eigen::Vector2f> >** Hough::GetAccu(int *w, int *h) {
+	ACCUMULATEUR Hough::GetAccu(int *w, int *h) {
+	    ComputeTotalAccu();
+
 		*w = _accu_w;
 		*h = _accu_h;
 
-		return _accu;
+		return _accu_total;
+	}
+
+	void Hough::ComputeTotalAccu() {
+	    if(is_accu_uptodate) return;
+	    is_accu_uptodate = true;
+
+        for (auto pair : _accu_dict) {
+            auto id = pair.first;
+            auto accu = pair.second;
+
+            for(int r=0;r<_accu_h;r++) {
+                for(int t=0;t<_accu_w;t++) {
+                    CELL current_cell = &accu[r][t];
+                    CELL total_cell = &_accu_total[r][t];
+                    total_cell->insert(total_cell->end(), current_cell->begin(), current_cell->end());
+                }
+            }
+        }
 	}
 }

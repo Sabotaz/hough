@@ -36,6 +36,8 @@
 #define HOUGH_H_
 
 #include <vector>
+#include <unordered_map>
+
 #include <Eigen/Core>
 #include <Eigen/StdVector>
 
@@ -57,6 +59,9 @@
 #endif
 
 #define HOUGH_UNIT_ 100
+
+typedef std::vector<Eigen::Vector2f,Eigen::aligned_allocator<Eigen::Vector2f> >* CELL;
+typedef CELL* ACCUMULATEUR;
 
 namespace keymolen {
     struct box {
@@ -93,25 +98,39 @@ namespace keymolen {
 		Hough();
 		virtual ~Hough();
 	public:
-		void AddPointCloud(pcl::PointCloud<Eigen::Vector2f>::Ptr cloud);
-		void RemovePointCloud(pcl::PointCloud<Eigen::Vector2f>::Ptr cloud);
+		void AddPointCloud(uint id, pcl::PointCloud<Eigen::Vector2f>::Ptr cloud);
 		void Clear();
+		void Clear(uint id);
+	    void setStartPosition(float x, float y);
 
-		std::vector<Eigen::Vector2f,Eigen::aligned_allocator<Eigen::Vector2f> >* GetAccuCell(int w, int h);
-		std::vector<Eigen::Vector2f,Eigen::aligned_allocator<Eigen::Vector2f> >** GetAccu(int *w, int *h);
+		CELL GetAccuCell(int w, int h);
+        CELL GetAccuCell(uint id, int h, int w);
+
+		ACCUMULATEUR GetAccu();
+		ACCUMULATEUR GetAccu(int *w, int *h);
+		ACCUMULATEUR GetAccu(uint id, int *w, int *h);
 
 	    std::vector<Eigen::ParametrizedLine<float, 2>> GetLines(int threshold);
         std::vector<std::pair<Eigen::Vector2f, Eigen::Vector2f>> GetSegments(int threshold, float dist_between_parts = 1.00);
 
 	private:
-	    void recomputeBox(pcl::PointCloud<Eigen::Vector2f>::Ptr cloud);
-		void updateBox(box newbox);
 
 	    std::vector<std::pair<int,int>> GetAccuEyes(int threshold);
 
 	    Eigen::ParametrizedLine<float, 2> ToParametrizedLine(int r, int t);
 
-		std::vector<Eigen::Vector2f,Eigen::aligned_allocator<Eigen::Vector2f> >** _accu;
+	    void ComputeTotalAccu();
+
+        void newAccumulateur();
+        void makeAccumulateur();
+        void makeAccumulateur(uint id);
+
+	    bool is_accu_uptodate = false;
+
+		ACCUMULATEUR _accu_total;
+
+        std::unordered_map<uint, ACCUMULATEUR> _accu_dict;
+
 		int _accu_w;
 		int _accu_h;
 		int _img_w;
