@@ -306,6 +306,12 @@ namespace keymolen {
 	    if(is_accu_uptodate) return;
 	    is_accu_uptodate = true;
 
+        for(int r=0;r<_accu_h;r++) {
+            for(int t=0;t<_accu_w;t++) {
+                _accu_total[r][t].clear();
+            }
+        }
+
         for (auto pair : _accu_dict) {
             auto id = pair.first;
             auto accu = pair.second;
