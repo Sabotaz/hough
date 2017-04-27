@@ -58,10 +58,10 @@ namespace keymolen {
 
 	void Hough::setStartPosition(float x, float y) {
 
-        _bornes.minx = x-10;
-        _bornes.maxx = x+10;
-        _bornes.miny = y-10;
-        _bornes.maxy = y+10;
+        _bornes.minx = x-20;
+        _bornes.maxx = x+20;
+        _bornes.miny = y-20;
+        _bornes.maxy = y+20;
 
         newAccumulateur();
 
@@ -154,7 +154,8 @@ namespace keymolen {
             for(int t=0;t<180;t++) {
                 double r = (proj(0) - center_x) * std::cos(t * DEG2RAD) + (proj(1) - center_y) * std::sin(t * DEG2RAD);
                 auto cell = GetAccuCell(id, CLAMP((int)(round(r + _hough_h)), 0, _accu_h-1), t);
-                cell->push_back(pt);
+                if (cell != nullptr)
+                    cell->push_back(pt);
             }
         }
 	    is_accu_uptodate = false;
@@ -166,7 +167,11 @@ namespace keymolen {
     }
 
     CELL Hough::GetAccuCell(uint id, int h, int w) {
-        return &_accu_dict[id][h][w];
+        if (h < _accu_h) {
+            return &_accu_dict[id][h][w];
+        } else {
+            return nullptr;
+        }
     }
 
     void Hough::Clear() {
@@ -268,7 +273,7 @@ namespace keymolen {
 		for(int r=0;r<_accu_h;r++) {
 			for(int t=0;t<_accu_w;t++) {
 				if(GetAccuCell(r, t)->size() >= threshold) {
-					//Is this point a local maxima (9x9)
+					//Is this point a local maxima (loc x loc)
 					int loc = 15 / 2;
 					int max = GetAccuCell(r, t)->size();
 					for(int ly=-loc;ly<=loc;ly++) {
@@ -284,12 +289,13 @@ namespace keymolen {
 					if(max > GetAccuCell(r, t)->size())
 						continue;
 
-                    LOGD("eye size : %d", max);
+                    //LOGD("eye size : %d", max);
 					eyes.push_back(std::make_pair(r, t));
 
 				}
 			}
 		}
+        //LOGD("eyes : %d", eyes.size());
 		return eyes;
 	}
 
